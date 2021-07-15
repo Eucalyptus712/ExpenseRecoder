@@ -6,6 +6,70 @@ import csv
 from datetime import datetime
 
 
+################################## SQL  database
+
+import sqlite3
+
+#สร้าง database
+conn = sqlite3.connect('expense.sqlite3')
+#สร้างตัวดำเนินการ (อยากได้อะไรใช้ตัวนี้ได้เลย)
+c = conn.cursor()
+
+#สร้าง table ด้วยภาษา SQL 
+'''
+'รหัสรายการ (transactionid) TEXT',
+'วัน-เวลา (datetime) TEXT',
+'รายการ(name) TEXT',
+'ค่าใช้จ่าย (expense) REAL (float)',
+'จำนวน (quantity)'INTEGER,
+'รวม (total) REAL'
+'''
+c.execute("""CREATE TABLE IF NOT EXISTS expenselist (
+				ID  INTEGER PRIMARY KEY AUTOINCREMENT,
+				transactionid TEXT,
+				datetime TEXT,
+				title TEXT,
+				expense REAL,
+				quantity INTEGER,
+				total REAL
+			)""")
+
+def insert_expense(transactionid,datetime,title,expense,quantity,total):
+	ID = None 
+	with conn: 
+		c.execute(""" INSERT INTO expenselist VALUES (?,?,?,?,?,?,?)""",
+			(ID,transactionid,datetime,title,expense,quantity,total))
+	conn.commit() #การบันทึกข้อมูลลงในฐานข้อมูล ถ้าาไม่รันตัวนี้จะไม่บันทึก 
+	#print('Insert Success!')
+
+def show_expense():
+	with conn:
+		c.execute("SELECT * FROM expenselist")
+		expense = c.fetchall() #คำสังให้ดึงข้อมูลมา
+		#print(expense)
+
+	return expense
+
+def update_expense(transactionid,title,expense,quantity,total):
+	with conn:
+		c.execute("""UPDATE expenselist SET 
+			title = ?, 
+			expense=? ,
+			quantity=?, 
+			total=? 
+			WHERE transactionid=?""",([title,expense,quantity,total,transactionid]))
+	conn.commit()
+	#print('DATA UPDATED')
+
+def delete_expense(transactionid):
+	with conn:
+		c.execute("DELETE FROM expenselist WHERE transactionid=?",([transactionid]))
+	conn.commit()
+	#print('Data deleted')
+
+########################################################################################
+
+
 days = {'Mon':'จันทร์',
 		'Tue':'อังคาร',
 		'Wed':'พุธ',
@@ -88,7 +152,7 @@ def Save(event=None):
 	total = int(price)*int(number)
 	try:
 		total = int(price)*int(number)
-		print('ชื่อรายการ: {} ราคา: {} บาท จำนวน: {} ราคารวม: {}'.format(expense,price,number,total))
+		#print('ชื่อรายการ: {} ราคา: {} บาท จำนวน: {} ราคารวม: {}'.format(expense,price,number,total))
 
 		#setค่าผลลัพธ์ ที่แสดง
 		text = 'ชื่อรายการ: {} ราคา: {} บาท\n'.format(expense,price)
@@ -101,11 +165,16 @@ def Save(event=None):
 		v_number.set('')
 	   
 		today = datetime.now().strftime('%a') #days['Mon'] = จันทร์
-		print(today)
+		#print(today)
 		stamp = datetime.now()   #ทำ stemp เลขแต่ละรายการ  เพื่ออ้างอิง
 		dt = stamp.strftime('%Y-%m-%d %H:%M:%S')
 		transactionid = stamp.strftime('%Y%m%d%H%M%f')     # srtftimp.org  รายละเอียดตัวแปร  
 		dt = days[today] + '-'+ dt
+		
+		#database
+		insert_expense(transactionid,dt,expense,float(price),int(number),total)
+
+
 		#บันทึกข้อมูลลง csv
 		with open('savedata.csv','a',encoding='utf-8',newline='') as f:
 
@@ -188,7 +257,7 @@ def read_csv():
 		# for a,b,c,d,e in data:
 		# 	print(b) 
 	return data   #ส่งค่าไปยัง reslut ที่ต้องการ
-
+ 
 # rs = read_csv() #####readcsv
 # print(rs) 
 
@@ -230,8 +299,17 @@ def UpdateCSV():
 		#เตรียมข้อมูลให้กลายเป็น list
 		data = list(alltransection.values())
 		fw.writerows(data)                          #เขียนทับลงไป เป็น row  multiple line from nested list [[],[],[]]
-		print('Table was update')
-		
+		#print('Table was update')
+
+def UpdateSQL():
+	data = list(alltransection.values())
+	#print('UPDATE SQL:',data[0])
+	for d in data:
+		#transactionid,title,expense,quantity,total
+		#d[0]202106210921947712,d[1]จันทร์-2021-06-21 09:21:04,d[2]กล้วย,d[3]5.0,d[4]10.0,d[5]50.0
+		update_expense(d[0],d[2],d[3],d[4],d[5])
+
+
 
 def DeleteRecord(event=None):
 	check = messagebox.askyesno('Confirm?','ต้องการลบข้อมูลใช่หรือไม่?')    #สร้างmessagebox yes no ขึ้นมา
@@ -247,7 +325,8 @@ def DeleteRecord(event=None):
 		#print(transactionid)
 		del alltransection[str(transactionid)]   #ลบข้อมูล   แปลงเป็น sting ด้วย
 		#print(alltransection)
-		UpdateCSV()
+		#UpdateCSV()
+		delete_expense(str(transactionid))  #ลบข้อมูล ใน database
 		update_table()           #อัพเดตข้อมูล
 	else:
 		print('cancel')
@@ -263,11 +342,12 @@ def update_table():    #อัพเดตข้อมูล
 	# for c in resulttable.get_children():           # แบบที่ 2
 	# 	resulttable.delete(c)
 	try:
-		data = read_csv()
+		#data = read_csv()
+		data = show_expense() #เรียกอ่านจาก database
 		for d in data:
-			alltransection[d[0]] = d     #สร้าง transection data        d[0] = transactionid
-			resulttable.insert('',0,value=d)
-		print(alltransection)
+			alltransection[d[1]] = d[1:]     #สร้าง transection data        d[0] = transactionid
+			resulttable.insert('',0,value=d[1:])
+		#print(alltransection)
 	except:
 		print('No File')
 
@@ -319,6 +399,7 @@ def EditRecord():
 		newdata = [olddata[0],olddata[1],v1,v2,v3,total]
 		alltransection[str(transactionid)] = newdata
 		UpdateCSV()
+		UpdateSQL() #อัพเดตข้อมูล
 		update_table()
 
 		#ปิดหน้าตอนกดบันทึกเสร็จ
@@ -358,6 +439,9 @@ resulttable.bind('<Button-3>',menupopup)          #หากมีการค�
 
 
 update_table()  #update ข้อมูล
+
+
+
 GUI.bind('<Tab>',lambda x: E2.focus())
 GUI.mainloop()
 
